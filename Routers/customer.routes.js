@@ -1,6 +1,7 @@
 import express from "express";
 import CustomerAuthController from "../Controllers/CustomerControllers/customer.auth.controller.js";
 import jwtAuth from "../middlewares/Auth/auth.middleware.js";
+import { upload } from "../middlewares/fileUpload.middleware.js";
 
 const customerRouter = express.Router();
 
@@ -26,12 +27,21 @@ customerRouter.post("/verify-account", (req, res) => {
   customerAuthController.verifyAccount(req, res);
 });
 
-customerRouter.post("/change-password", (req, res) => {
-  customerAuthController.changePassword(req, res);
-});
+customerRouter.post(
+  "/registration",
+  jwtAuth,
+  upload.fields([
+    { name: "aadhar", maxCount: 1 },
+    { name: "drivingLicense", maxCount: 1 },
+    { name: "addressProof", maxCount: 1 },
+  ]),
+  (req, res) => {
+    customerAuthController.registration(req, res);
+  }
+);
 
-customerRouter.post("/reset-password", (req, res) => {
-  customerAuthController.resetPassword(req, res);
+customerRouter.get("/registration-details", jwtAuth, (req, res) => {
+  customerAuthController.getRegistrationDetails(req, res);
 });
 
 export default customerRouter;

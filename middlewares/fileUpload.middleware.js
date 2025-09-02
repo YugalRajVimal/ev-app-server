@@ -1,17 +1,29 @@
 import multer from "multer";
+import fs from "fs";
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "./uploads/"); // Store videos in the 'uploads/videos' directory
+    let uploadPath = "./Uploads/"; // default fallback
+
+    // Decide folder based on fieldname
+    if (file.fieldname === "aadhar") {
+      uploadPath = "./Uploads/Aadhar";
+    } else if (file.fieldname === "drivingLicense") {
+      uploadPath = "./Uploads/DrivingLicense";
+    } else if (file.fieldname === "addressProof") {
+      uploadPath = "./Uploads/AddressProof";
+    }
+
+    // Ensure the folder exists
+    fs.mkdirSync(uploadPath, { recursive: true });
+
+    cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // Generate a unique filename with the current timestamp and original file extension
     const uniqueName = `${Date.now()}-${file.originalname}`;
     cb(null, uniqueName);
   },
 });
 
-// Set up the multer middleware
-export const upload = multer({
-  storage: storage,
-});
+// Multer middleware
+export const upload = multer({ storage });

@@ -2,6 +2,7 @@ import UserModel from "../../Schema/user.schema.js";
 import sendMail from "../../config/nodeMailer.config.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { deleteUploadedFiles } from "../../middlewares/fileDelete.middleware.js";
 
 class CustomerAuthController {
   checkAuth = async (req, res) => {
@@ -19,59 +20,57 @@ class CustomerAuthController {
   };
 
   signup = async (req, res) => {
-    const { email, password, name, companyName } = req.body;
-    if (!email || !password || !name || !companyName) {
+    const { email, name, phoneNo } = req.body;
+    console.log(`[Signup] Attempting signup for email: ${email}`);
+
+    if (!email || !name || !phoneNo) {
+      console.log("[Signup] Missing required fields.");
       return res.status(400).json({ message: "All fields are required" });
     }
+
     try {
-      const existingUserUsingEmail = await UserModel.findOne({ email });
+      const existingUser = await UserModel.findOne({ email });
+      console.log(`[Signup] Checked for existing user with email: ${email}`);
 
-      if (existingUserUsingEmail) {
-        return res.status(409).json({
-          message: "User with this email already exists.",
-        });
-      }
-
-      if (existingUserUsingEmail) {
-        if (!existingUserUsingEmail.verified) {
-          const otp = Math.floor(Math.random() * 900000) + 100000;
-          await UserModel.findByIdAndUpdate(existingUserUsingEmail._id, {
-            otp,
-          });
-          const message = `Your OTP is: ${otp}`;
-          await sendMail(email, "Sign Up OTP", message);
-          return res.status(200).json({
-            message:
-              "User already exists. OTP sent to your email. Verify Account",
-          });
-        }
+      if (existingUser) {
         return res
           .status(409)
-          .json({ message: "Email already in use. Login." });
+          .json({ message: "Email already in use. Please login." });
       }
 
-      const hashedPassword = await bcrypt.hash(password, 10);
       const newUser = new UserModel({
         email,
-        password: hashedPassword,
         name,
-        companyName,
+        phoneNo,
         role: "Customer",
       });
 
       await newUser.save();
-      // Generate a random 6 digit OTP using crypto
+      console.log(`[Signup] New user ${newUser.id} saved successfully.`);
+
+      // Generate a random 6 digit OTP
       const otp = Math.floor(Math.random() * 900000) + 100000;
-      // Save OTP to the user document
-      await UserModel.findByIdAndUpdate(newUser.id, { otp }, { new: true });
+      // Save OTP to the user document and set an expiration time
+      await UserModel.findByIdAndUpdate(
+        newUser.id,
+        { otp, otpExpires: new Date(Date.now() + 10 * 60 * 1000) },
+        { new: true }
+      );
+      console.log(
+        `[Signup] OTP ${otp} generated and saved for new user ${newUser.id}.`
+      );
+
       // Send OTP to the user's email
       const message = `Your OTP is: ${otp}`;
       await sendMail(email, "Sign Up OTP", message);
+      console.log(`[Signup] OTP email sent to ${email}.`);
+
       res.status(201).json({
         message: "Sign Up successful. OTP sent to your email. Verify Account",
       });
+      console.log(`[Signup] Signup successful for ${email}. Response sent.`);
     } catch (error) {
-      console.error(error);
+      console.error(`[Signup] Error during signup for ${email}:`, error);
       res.status(500).json({ message: "Internal Server Error" });
     }
   };
@@ -92,11 +91,6 @@ class CustomerAuthController {
       user.otp = null;
       user.save();
       // Verify the user and update the verified field to true
-      await UserModel.findByIdAndUpdate(
-        user.id,
-        { verified: true },
-        { new: true }
-      );
       // Generate a JSON Web Token
       const token = jwt.sign(
         { id: user.id, email: user.email, role: "Customer" },
@@ -111,47 +105,7 @@ class CustomerAuthController {
   };
 
   signin = async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password are required" });
-    }
-    try {
-      const user = await UserModel.findOne({ email });
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      if (!user.verified) {
-        const otp = Math.floor(Math.random() * 900000) + 100000;
-        // Save OTP to the user document
-        await UserModel.findByIdAndUpdate(user.id, { otp }, { new: true });
-        const message = `Your OTP is: ${otp}`;
-        await sendMail(email, "Sign Up OTP", message);
-        return res.status(403).json({
-          message: "User not verified. OTP sent to your email. Verify Account",
-        });
-      }
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        return res.status(401).json({ message: "Invalid credentials" });
-      }
-      // Generate a JSON Web Token
-      const token = jwt.sign(
-        { id: user.id, email: user.email, role: "Customer" },
-        process.env.JWT_SECRET
-        // { expiresIn: "24h" }
-      );
-
-      res.status(200).json({ token });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal Server Error" });
-    }
-  };
-
-  resetPassword = async (req, res) => {
-    const { email, password } = req.body;
+    const { email } = req.body;
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
@@ -160,54 +114,122 @@ class CustomerAuthController {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      // Encrypt the new password
-      const encryptedPassword = await bcrypt.hash(password, 10);
-      // Update the user document with the new password and set verified to false
-      // Generate OTP
-      const otp = Math.floor(Math.random() * 900000) + 100000;
 
+      // Generate a random 6 digit OTP
+      const otp = Math.floor(Math.random() * 900000) + 100000;
+      // Save OTP to the user document and set an expiration time
       await UserModel.findByIdAndUpdate(
         user.id,
-        { otp, password: encryptedPassword, verified: false },
+        { otp, otpExpires: new Date(Date.now() + 10 * 60 * 1000) },
         { new: true }
       );
+
       // Send OTP to the user's email
       const message = `Your OTP is: ${otp}`;
-      await sendMail(email, "Reset Password OTP", message);
-      return res.status(200).json({
-        message: "OTP sent to your Email, Verify youseft to reset Password.",
-      });
+      await sendMail(email, "Sign Up OTP", message);
+      console.log(`[Signup] OTP email sent to ${email}.`);
+
+      res.status(200).json({ message: "OTP sent to mail successfully" });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal Server Error" });
     }
   };
 
-  changePassword = async (req, res) => {
-    const { oldPassword, password } = req.body;
-    if (!oldPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ message: "Old and new passwords are required" });
-    }
+  getRegistrationDetails = async (req, res) => {
     try {
-      const user = await UserModel.findById(req.user.id);
+      const { id } = req.user; // Assuming req.user is populated by a JWT middleware
+
+      if (!id) {
+        return res.status(400).json({ message: "User ID is required." });
+      }
+
+      const user = await UserModel.findById(id).select("documents"); // Select only the documents field
+
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ message: "User not found." });
       }
-      const isMatch = await bcrypt.compare(oldPassword, user.password);
-      if (!isMatch) {
-        return res.status(401).json({ message: "Old password is incorrect" });
+
+      if (
+        !user.documents ||
+        Object.values(user.documents).every((doc) => !doc)
+      ) {
+        return res
+          .status(404)
+          .json({ message: "No registration documents found for this user." });
       }
-      const encryptedPassword = await bcrypt.hash(newPassword, 10);
-      await UserModel.findByIdAndUpdate(
-        user.id,
-        { password: encryptedPassword },
-        { new: true }
-      );
-      return res.status(200).json({ message: "Password changed successfully" });
+
+      res.status(200).json({
+        message: "Customer registration documents retrieved successfully",
+        documents: user.documents,
+      });
     } catch (error) {
-      console.error(error);
+      console.error("Error fetching registration details:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  registration = async (req, res) => {
+    try {
+      const { id, email } = req.user;
+
+      // Validate required fields from authenticated user
+      if (!id || !email) {
+        deleteUploadedFiles(req.files); // cleanup on failure
+        return res.status(400).json({
+          message: "User ID and Email are required for registration.",
+        });
+      }
+
+      const existingUser = await UserModel.findOne({ _id: id, email });
+
+      if (!existingUser) {
+        deleteUploadedFiles(req.files);
+        return res
+          .status(404) // Changed status from 409 to 404 as the user was not found.
+          .json({ message: "User not found with the provided ID and email." });
+      }
+
+      if (
+        !req.files ||
+        (!req.files.aadhar?.length &&
+          !req.files.drivingLicense?.length &&
+          !req.files.addressProof?.length)
+      ) {
+        deleteUploadedFiles(req.files);
+        return res.status(400).json({
+          message:
+            "At least one registration document (Aadhar, Driving License, or Address Proof) is required.",
+        });
+      }
+
+      // Extract uploaded file paths safely
+      const documents = {
+        aadharFilePath: req.files?.aadhar ? req.files.aadhar[0].path : null,
+        drivingLicenseFilePath: req.files?.drivingLicense
+          ? req.files.drivingLicense[0].path
+          : null,
+        addressProofFilePath: req.files?.addressProof
+          ? req.files.addressProof[0].path
+          : null,
+      };
+
+      // Update the documents field on the user object
+      existingUser.documents = documents;
+      // Save the updated user document to the database
+      await existingUser.save();
+
+      res
+        .status(200) // Changed status from 201 to 200 as this is an update operation, not a creation.
+        .json({
+          message: "Customer documents registered successfully",
+          user: existingUser, // The existingUser object now reflects the saved changes.
+        });
+    } catch (error) {
+      console.error("Registration error:", error);
+
+      // Cleanup uploaded files if an error occurs during processing
+      deleteUploadedFiles(req.files);
       res.status(500).json({ message: "Internal Server Error" });
     }
   };
