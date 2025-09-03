@@ -12,6 +12,8 @@ const storage = multer.diskStorage({
       uploadPath = "./Uploads/DrivingLicense";
     } else if (file.fieldname === "addressProof") {
       uploadPath = "./Uploads/AddressProof";
+    } else if (file.fieldname === "profilePicture") {
+      uploadPath = "./Uploads/ProfilePicture";
     }
 
     // Ensure the folder exists

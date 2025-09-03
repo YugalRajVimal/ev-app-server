@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema(
       type: Date,
     },
     documents: {
+      profilePictureFilePath: {},
       aadharFilePath: {
         type: String,
       },
@@ -30,6 +31,16 @@ const userSchema = new mongoose.Schema(
       addressProofFilePath: {
         type: String,
       },
+    },
+    currentSubscriptions: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Subscriptions" },
+    ],
+    subscriptionHistory: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Subscriptions" },
+    ],
+    wallet: {
+      type: Number,
+      default: 0,
     },
   },
   { timestamps: true }

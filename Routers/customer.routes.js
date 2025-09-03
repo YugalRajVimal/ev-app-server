@@ -44,4 +44,37 @@ customerRouter.get("/registration-details", jwtAuth, (req, res) => {
   customerAuthController.getRegistrationDetails(req, res);
 });
 
+customerRouter.post(
+  "/update-profile-details",
+  jwtAuth,
+  upload.single("profilePicture"),
+  (req, res) => {
+    customerAuthController.updateProfileDetails(req, res);
+  }
+);
+
+customerRouter.get("/get-profile-details", jwtAuth, (req, res) => {
+  customerAuthController.getProfileDetails(req, res);
+});
+
+customerRouter.post("/purchase-package", jwtAuth, (req, res) => {
+  customerAuthController.purchasePackage(req, res);
+});
+
+customerRouter.get(
+  "/get-subscription-detail/:subscriptionId",
+  jwtAuth,
+  (req, res) => {
+    customerAuthController.getSubscriptionDetail(req, res);
+  }
+);
+
+customerRouter.get("/get-all-subscription-detail", jwtAuth, (req, res) => {
+  customerAuthController.getAllSubscriptionDetails(req, res);
+});
+
+customerRouter.get("/get-subscription-history", jwtAuth, (req, res) => {
+  customerAuthController.getSubscriptionHistory(req, res);
+});
+
 export default customerRouter;

@@ -3,6 +3,7 @@ import sendMail from "../../config/nodeMailer.config.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { deleteUploadedFiles } from "../../middlewares/fileDelete.middleware.js";
+import SubscriptionModel from "../../Schema/subscriptions.schema.js";
 
 class CustomerAuthController {
   checkAuth = async (req, res) => {
@@ -233,6 +234,311 @@ class CustomerAuthController {
       res.status(500).json({ message: "Internal Server Error" });
     }
   };
+
+  updateProfileDetails = async (req, res) => {
+    // Assuming 'UserModel' is imported and 'deleteSingleFile' utility function is available in scope.
+    // 'deleteSingleFile' should handle deleting a single file path, similar to how 'deleteUploadedFiles'
+    // handles multiple files in the 'registration' method.
+    try {
+      const userId = req.user.id; // Assuming jwtAuth middleware sets req.userId
+      const { name } = req.body;
+      const profilePictureFile = req.file; // Assuming 'upload.single('profilePicture')' middleware is used on the route
+
+      if (!userId) {
+        return res
+          .status(401)
+          .json({ message: "Unauthorized: User ID not found." });
+      }
+
+      const existingUser = await UserModel.findById(userId);
+
+      if (!existingUser) {
+        // If a file was uploaded but user not found, delete the file
+        if (profilePictureFile) {
+          // Assuming deleteSingleFile is available (e.g., imported or defined globally)
+          deleteSingleFile(profilePictureFile.path);
+        }
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      let updated = false;
+
+      // Update name if provided and different from current name
+      // Check for undefined, null, and empty string after trimming
+      if (
+        name !== undefined &&
+        name !== null &&
+        name.trim() !== "" &&
+        existingUser.name !== name
+      ) {
+        existingUser.name = name;
+        updated = true;
+      }
+
+      // Update profile picture if a new one is uploaded
+      if (profilePictureFile) {
+        // Ensure documents object exists on the user
+        if (!existingUser.documents) {
+          existingUser.documents = {};
+        }
+
+        // If an old profile picture path exists, delete the old file
+        if (existingUser.documents.profilePictureFilePath) {
+          // Assuming deleteSingleFile is available
+          deleteSingleFile(existingUser.documents.profilePictureFilePath);
+        }
+
+        // Set the new profile picture file path
+        existingUser.documents.profilePictureFilePath = profilePictureFile.path;
+        updated = true;
+      }
+
+      if (!updated) {
+        // If no name was updated and no new profile picture was provided,
+        // return a 400 Bad Request.
+        // No file deletion needed here as 'profilePictureFile' would not have been processed as an update
+        // (i.e., if profilePictureFile was present, 'updated' would have been true).
+        return res
+          .status(400)
+          .json({ message: "No valid profile details provided for update." });
+      }
+
+      await existingUser.save();
+
+      // Respond with updated user details, excluding sensitive info
+      res.status(200).json({
+        message: "Profile details updated successfully",
+        user: {
+          _id: existingUser._id,
+          name: existingUser.name,
+          email: existingUser.email,
+          phoneNo: existingUser.phoneNo,
+          role: existingUser.role,
+          // Include the updated profile picture path if it exists
+          profilePictureFilePath:
+            existingUser.documents?.profilePictureFilePath || null,
+        },
+      });
+    } catch (error) {
+      console.error("Update profile details error:", error);
+      // If a file was uploaded and an error occurred during processing, delete it
+      if (req.file) {
+        // Assuming deleteSingleFile is available
+        deleteSingleFile(req.file.path);
+      }
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  getProfileDetails = async (req, res) => {
+    try {
+      const userId = req.user.id; // Get user ID from the authenticated request
+
+      const user = await UserModel.findById(userId).select(
+        "name email phoneNo documents.profilePictureFilePath wallet createdAt"
+      );
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      res.status(200).json({
+        message: "Profile details fetched successfully",
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          phoneNo: user.phoneNo,
+          wallet: user.wallet,
+          createdAt: user.createdAt,
+          profilePictureFilePath:
+            user.documents?.profilePictureFilePath || null,
+        },
+      });
+    } catch (error) {
+      console.error("Get profile details error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  purchasePackage = async (req, res) => {
+    try {
+      const userId = req.user.id; // Get user ID from the authenticated request
+
+      // Extract subscription details from the request body
+      const { planName, period, amount, daysCount } = req.body;
+
+      // Basic validation for required fields
+      if (!planName || !period || !amount) {
+        return res.status(400).json({
+          message:
+            "Missing required subscription details (planName, period, amount).",
+        });
+      }
+
+      if (period == "payAsYouGo" && !daysCount) {
+        return res.status(400).json({
+          message: "For 'payAsYouGo' plans, 'daysCount' is required.",
+        });
+      }
+
+      // Validate amount type and value
+      if (typeof amount !== "number" || amount <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Amount must be a positive number." });
+      }
+
+      // Set subscription start date to now
+      const subscriptionStartsOn = new Date();
+      let trialEndsOn = new Date(subscriptionStartsOn); // Initialize with start date
+
+      if (period === "monthly") {
+        trialEndsOn.setDate(subscriptionStartsOn.getDate() + 30);
+      } else if (period === "weekly") {
+        trialEndsOn.setDate(subscriptionStartsOn.getDate() + 7);
+      } else if (period === "payAsYouGo") {
+        trialEndsOn.setDate(subscriptionStartsOn.getDate() + daysCount);
+      }
+
+      // Create a new subscription document
+      const newSubscription = new SubscriptionModel({
+        planName,
+        period,
+        trialEndsOn,
+        subscriptionStartsOn,
+        amount,
+        daysCount: daysCount ? daysCount : null,
+      });
+
+      // Save the new subscription to the database
+      await newSubscription.save();
+
+      // Find the user and update their subscription arrays
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      user.currentSubscriptions.push(newSubscription._id);
+      user.subscriptionHistory.push(newSubscription._id); // Also add to history
+
+      await user.save();
+
+      // Respond with success
+      res.status(201).json({
+        message: "Subscription package purchased successfully.",
+        subscription: newSubscription,
+      });
+    } catch (error) {
+      console.error("Purchase package error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  getSubscriptionDetail = async (req, res) => {
+    try {
+      const userId = req.user.id; // Assuming userId is available from JWT middleware
+      const { subscriptionId } = req.params; // Assuming subscription ID comes from URL parameters
+
+      if (!subscriptionId) {
+        return res
+          .status(400)
+          .json({ message: "Subscription ID is required." });
+      }
+
+      // Find the user to ensure the subscription belongs to them
+      const user = await UserModel.findById(userId)
+        .populate("currentSubscriptions")
+        .populate("subscriptionHistory");
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      // Check if the requested subscription ID exists in either current or historical subscriptions for this user
+      const isUsersSubscription =
+        user.currentSubscriptions.some(
+          (sub) => sub._id.toString() === subscriptionId
+        ) ||
+        user.subscriptionHistory.some(
+          (sub) => sub._id.toString() === subscriptionId
+        );
+
+      if (!isUsersSubscription) {
+        return res
+          .status(404)
+          .json({ message: "Subscription not found for this user." });
+      }
+
+      // Fetch the full subscription details
+      const subscription = await SubscriptionModel.findById(subscriptionId);
+
+      if (!subscription) {
+        // This case should ideally not be hit if isUsersSubscription is true, but good for robustness
+        return res
+          .status(404)
+          .json({ message: "Subscription details not found." });
+      }
+
+      res.status(200).json({ subscription });
+    } catch (error) {
+      console.error("Get specific subscription details error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  getAllSubscriptionDetails = async (req, res) => {
+    try {
+      const userId = req.user.id; // Assuming userId is available from JWT middleware
+
+      // Find the user and populate their current subscriptions
+      const user = await UserModel.findById(userId).populate(
+        "currentSubscriptions"
+      );
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      res
+        .status(200)
+        .json({ currentSubscriptions: user.currentSubscriptions || [] });
+    } catch (error) {
+      console.error("Get all current subscriptions error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  getSubscriptionHistory = async (req, res) => {
+    try {
+      const userId = req.user.id; // Assuming userId is available from JWT middleware
+
+      // Find the user and populate their subscription history
+      const user = await UserModel.findById(userId).populate(
+        "subscriptionHistory"
+      );
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      res
+        .status(200)
+        .json({ subscriptionHistory: user.subscriptionHistory || [] });
+    } catch (error) {
+      console.error("Get subscription history error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  getWalletDetails = async (req, res) => {};
+
+  addAmountToWallet = async (req, res) => {};
+
+  getTransactionHistory = async (req, res) => {};
+
+  logout = async (req, res) => {};
 }
 
 export default CustomerAuthController;
