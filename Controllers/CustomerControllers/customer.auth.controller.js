@@ -424,6 +424,10 @@ class CustomerAuthController {
 
         user.walletBalance =
           parseFloat(user.walletBalance) - parseFloat(amount);
+        user.walletHistory.push({
+          amount: amount,
+          type: "Debit",
+        });
       }
 
       // Create a new subscription document
