@@ -1,4 +1,3 @@
-// models/Farmer.js
 import mongoose from "mongoose";
 
 const subscriptionSchema = new mongoose.Schema(
@@ -17,6 +16,7 @@ const subscriptionSchema = new mongoose.Schema(
     subscriptionStartsOn: { type: Date, required: true },
     amount: { type: Number, required: true },
     active: { type: Boolean, default: true },
+    paymentFrom: { type: String, enum: ["Wallet", "PaymentGateway"] },
   },
   { timestamps: true }
 );

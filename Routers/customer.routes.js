@@ -77,4 +77,24 @@ customerRouter.get("/get-subscription-history", jwtAuth, (req, res) => {
   customerAuthController.getSubscriptionHistory(req, res);
 });
 
+customerRouter.get("/get-wallet-balance", jwtAuth, (req, res) => {
+  customerAuthController.getWalletDetails(req, res);
+});
+
+customerRouter.post("/add-wallet-balance", jwtAuth, (req, res) => {
+  customerAuthController.addAmountToWallet(req, res);
+});
+
+customerRouter.get("/get-wallet-history", jwtAuth, (req, res) => {
+  customerAuthController.getWalletHistory(req, res);
+});
+
+customerRouter.get("/get-transaction-history", jwtAuth, (req, res) => {
+  customerAuthController.getTransactionHistory(req, res);
+});
+
+customerRouter.post("/logout", (req, res) => {
+  customerAuthController.logout(req, res);
+});
+
 export default customerRouter;

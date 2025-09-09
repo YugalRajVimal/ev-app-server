@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { deleteUploadedFiles } from "../../middlewares/fileDelete.middleware.js";
 import SubscriptionModel from "../../Schema/subscriptions.schema.js";
+import ExpiredTokenModel from "../../Schema/expired-token.schema.js";
 
 class CustomerAuthController {
   checkAuth = async (req, res) => {
@@ -366,10 +367,10 @@ class CustomerAuthController {
       const userId = req.user.id; // Get user ID from the authenticated request
 
       // Extract subscription details from the request body
-      const { planName, period, amount, daysCount } = req.body;
+      const { planName, period, amount, daysCount, paymentFrom } = req.body;
 
       // Basic validation for required fields
-      if (!planName || !period || !amount) {
+      if (!planName || !period || !amount || !paymentFrom) {
         return res.status(400).json({
           message:
             "Missing required subscription details (planName, period, amount).",
@@ -389,6 +390,12 @@ class CustomerAuthController {
           .json({ message: "Amount must be a positive number." });
       }
 
+      // Find the user and update their subscription arrays
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
       // Set subscription start date to now
       const subscriptionStartsOn = new Date();
       let trialEndsOn = new Date(subscriptionStartsOn); // Initialize with start date
@@ -401,6 +408,24 @@ class CustomerAuthController {
         trialEndsOn.setDate(subscriptionStartsOn.getDate() + daysCount);
       }
 
+      if (paymentFrom != "Wallet" || paymentFrom != "PaymentGateway") {
+        return res.status(400).json({
+          message:
+            "Invalid paymentFrom method. Must be 'Wallet' or 'PaymentGateway'",
+        });
+      }
+
+      if (paymentFrom == "Wallet") {
+        if (user.walletBalance < amount) {
+          return res
+            .status(402)
+            .json({ message: "Insufficient wallet balance." });
+        }
+
+        user.walletBalance =
+          parseFloat(user.walletBalance) - parseFloat(amount);
+      }
+
       // Create a new subscription document
       const newSubscription = new SubscriptionModel({
         planName,
@@ -408,20 +433,23 @@ class CustomerAuthController {
         trialEndsOn,
         subscriptionStartsOn,
         amount,
+        paymentFrom,
         daysCount: daysCount ? daysCount : null,
       });
 
       // Save the new subscription to the database
       await newSubscription.save();
 
-      // Find the user and update their subscription arrays
-      const user = await UserModel.findById(userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found." });
-      }
-
       user.currentSubscriptions.push(newSubscription._id);
       user.subscriptionHistory.push(newSubscription._id); // Also add to history
+
+      // Add transaction history for the purchase
+      user.transactionHistory.push({
+        amount: amount,
+        type: "Debit",
+        debittedFrom: paymentFrom, // Assuming payment is made via an external gateway for the subscription
+        transactionDate: new Date(),
+      });
 
       await user.save();
 
@@ -532,13 +560,131 @@ class CustomerAuthController {
     }
   };
 
-  getWalletDetails = async (req, res) => {};
+  getWalletDetails = async (req, res) => {
+    try {
+      const userId = req.user.id; // Assuming userId is available from JWT middleware
 
-  addAmountToWallet = async (req, res) => {};
+      const user = await UserModel.findById(userId);
 
-  getTransactionHistory = async (req, res) => {};
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
 
-  logout = async (req, res) => {};
+      res.status(200).json({ walletBalance: user.walletBalance || 0 }); // Assuming 'wallet' field exists in UserModel
+    } catch (error) {
+      console.error("Get wallet details error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  addAmountToWallet = async (req, res) => {
+    try {
+      const userId = req.user.id; // Assuming userId is available from JWT middleware
+      const { amount } = req.body;
+
+      if (!amount || typeof amount !== "number" || amount <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Valid positive amount is required." });
+      }
+
+      const user = await UserModel.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      user.walletBalance += amount;
+      user.totalAddedBalanceInWallet += amount;
+      user.walletHistory.push({
+        amount: amount,
+        type: "Credit",
+      });
+
+      await user.save();
+
+      res.status(200).json({
+        message: "Amount added to wallet successfully.",
+        newWalletBalance: user.walletBalance,
+      });
+    } catch (error) {
+      console.error("Add amount to wallet error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  getWalletHistory = async (req, res) => {
+    try {
+      const userId = req.user.id; // Get user ID from the authenticated request
+
+      const user = await UserModel.findById(userId).select("walletHistory");
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      res.status(200).json({
+        message: "Wallet history fetched successfully.",
+        walletHistory: user.walletHistory,
+      });
+    } catch (error) {
+      console.error("Get wallet history error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  getTransactionHistory = async (req, res) => {
+    try {
+      const userId = req.user.id; // Get user ID from the authenticated request
+
+      const user = await UserModel.findById(userId).select(
+        "transactionHistory"
+      );
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      res.status(200).json({
+        message: "Transaction history fetched successfully.",
+        transactionHistory: user.transactionHistory,
+      });
+    } catch (error) {
+      console.error("Get transaction history error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  logout = async (req, res) => {
+    try {
+      const { token } = req.body; // Assuming the token is sent in the request body
+
+      if (!token) {
+        return res
+          .status(400)
+          .json({ message: "Token is required for logout." });
+      }
+
+      // Check if the token is already expired (optional, but good for idempotency)
+      const existingExpiredToken = await ExpiredTokenModel.findOne({ token });
+      if (existingExpiredToken) {
+        return res
+          .status(200)
+          .json({ message: "User already logged out successfully." });
+      }
+
+      // Add the token to the ExpiredTokenModel
+      const expiredToken = new ExpiredTokenModel({ token });
+      await expiredToken.save();
+
+      res.status(200).json({ message: "Logged out successfully." });
+    } catch (error) {
+      console.error("Logout error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  pushNotification = async (req, res) => {};
 }
 
 export default CustomerAuthController;

@@ -1,10 +1,18 @@
 import jwt from "jsonwebtoken";
+import ExpiredTokenModel from "../../Schema/expired-token.schema.js";
 
-const jwtAuth = (req, res, next) => {
+const jwtAuth = async (req, res, next) => {
   // Read the token from the Authorization header
   const token = req.headers["authorization"];
 
   console.log(req.headers["authorization"]);
+
+  const existingExpiredToken = await ExpiredTokenModel.findOne({ token });
+  if (existingExpiredToken) {
+    return res.status(401).json({
+      message: "Unauthorized: Token expired, please log in again.",
+    });
+  }
 
   // If no token is present, return an error
   if (!token) {
