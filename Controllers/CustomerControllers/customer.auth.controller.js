@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { deleteUploadedFiles } from "../../middlewares/fileDelete.middleware.js";
 import SubscriptionModel from "../../Schema/subscriptions.schema.js";
 import ExpiredTokenModel from "../../Schema/expired-token.schema.js";
+import PackageModel from "../../Schema/packages.schema.js";
 
 class CustomerAuthController {
   checkAuth = async (req, res) => {
@@ -362,6 +363,26 @@ class CustomerAuthController {
     }
   };
 
+  getAllPackages = async (req, res) => {
+    // NOTE: PackageModel needs to be imported at the top of this file for this function to work correctly.
+    // Example: import PackageModel from "../../Schema/packages.schema.js";
+    try {
+      const packages = await PackageModel.find({}); // Fetch all packages from the database
+
+      if (!packages || packages.length === 0) {
+        return res.status(404).json({ message: "No packages found." });
+      }
+
+      return res.status(200).json({
+        message: "Packages fetched successfully",
+        packages: packages,
+      });
+    } catch (error) {
+      console.error("Error fetching packages:", error);
+      return res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
   purchasePackage = async (req, res) => {
     try {
       const userId = req.user.id; // Get user ID from the authenticated request
@@ -424,6 +445,7 @@ class CustomerAuthController {
 
         user.walletBalance =
           parseFloat(user.walletBalance) - parseFloat(amount);
+
         user.walletHistory.push({
           amount: amount,
           type: "Debit",

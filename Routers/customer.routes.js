@@ -57,6 +57,10 @@ customerRouter.get("/get-profile-details", jwtAuth, (req, res) => {
   customerAuthController.getProfileDetails(req, res);
 });
 
+customerRouter.get("/get-all-packages", (req, res) => {
+  customerAuthController.getAllPackages(req, res);
+});
+
 customerRouter.post("/purchase-package", jwtAuth, (req, res) => {
   customerAuthController.purchasePackage(req, res);
 });
