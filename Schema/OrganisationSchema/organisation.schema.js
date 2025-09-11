@@ -1,0 +1,84 @@
+import mongoose from "mongoose";
+
+const userSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    phoneNo: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    role: {
+      type: String,
+      default: "Organisation",
+    },
+    otp: {
+      type: String,
+    },
+    otpExpires: {
+      type: Date,
+    },
+    documents: {
+      profilePictureFilePath: {},
+      aadharFilePath: {
+        type: String,
+      },
+      drivingLicenseFilePath: {
+        type: String,
+      },
+      addressProofFilePath: {
+        type: String,
+      },
+    },
+    currentSubscriptions: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Subscriptions" },
+    ],
+    subscriptionHistory: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Subscriptions" },
+    ],
+    walletBalance: {
+      type: Number,
+      default: 0,
+    },
+    totalAddedBalanceInWallet: {
+      type: Number,
+      default: 0,
+    },
+    walletHistory: [
+      {
+        amount: { type: Number, required: true },
+        type: {
+          type: String,
+          enum: ["Credit", "Debit"],
+          required: true,
+        },
+        transactionDate: { type: Date, default: Date.now }, // Added for better tracking of individual transactions
+        isPaid: { type: Boolean, default: false },
+        orderId: {
+          type: String,
+          unique: true,
+        },
+      },
+    ],
+    transactionHistory: [
+      {
+        amount: { type: Number, required: true },
+        type: {
+          type: String,
+          enum: ["Credit", "Debit", "Refund"],
+          required: true,
+        },
+        creditedIn: {
+          type: String,
+          enum: ["Wallet", "Original Payment Method"],
+        },
+        debittedFrom: {
+          type: String,
+          enum: ["Wallet", "PaymentGateway"],
+        },
+        transactionDate: { type: Date, default: Date.now }, // Added for better tracking of individual transactions
+      },
+    ],
+  },
+  { timestamps: true }
+);
+
+const OrganisationModel = mongoose.model("Organisation", userSchema);
+export default OrganisationModel;

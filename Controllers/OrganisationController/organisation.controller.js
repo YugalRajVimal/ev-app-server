@@ -1,24 +1,24 @@
-import UserModel from "../../Schema/CustomerSchema/user.schema.js";
+import OrganisationModel from "../../Schema/OrganisationSchema/organisation.schema.js";
 import sendMail from "../../config/nodeMailer.config.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { deleteUploadedFiles } from "../../middlewares/fileDelete.middleware.js";
-import SubscriptionModel from "../../Schema/CustomerSchema/subscriptions.schema.js";
+import SubscriptionModel from "../../Schema/OrganisationSchema/organisationSubscriptions.schema.js";
 import ExpiredTokenModel from "../../Schema/expired-token.schema.js";
-import PackageModel from "../../Schema/CustomerSchema/packages.schema.js";
+import PackageModel from "../../Schema/OrganisationSchema/organisationPackages.schema.js";
 import { Cashfree as CashfreePG } from "cashfree-pg";
 
 CashfreePG.XClientId = process.env.CASHFREE_CLIENT_ID;
 CashfreePG.XClientSecret = process.env.CASHFREE_CLIENT_SECRET;
 CashfreePG.XEnvironment = CashfreePG.Environment.SANDBOX;
 
-class CustomerAuthController {
+class OrganisationController {
   checkAuth = async (req, res) => {
     try {
       console.log("Not Verified");
 
-      if (req.user.role != "Customer") {
+      if (req.user.role != "Organisation") {
         return res.status(401).json({ message: "Unauthorized" });
       }
       console.log("Verified");
@@ -38,7 +38,7 @@ class CustomerAuthController {
     }
 
     try {
-      const existingUser = await UserModel.findOne({ email });
+      const existingUser = await OrganisationModel.findOne({ email });
       console.log(`[Signup] Checked for existing user with email: ${email}`);
 
       if (existingUser) {
@@ -47,11 +47,11 @@ class CustomerAuthController {
           .json({ message: "Email already in use. Please login." });
       }
 
-      const newUser = new UserModel({
+      const newUser = new OrganisationModel({
         email,
         name,
         phoneNo,
-        role: "Customer",
+        role: "Organisation",
       });
 
       await newUser.save();
@@ -60,7 +60,7 @@ class CustomerAuthController {
       // Generate a random 6 digit OTP
       const otp = Math.floor(Math.random() * 900000) + 100000;
       // Save OTP to the user document and set an expiration time
-      await UserModel.findByIdAndUpdate(
+      await OrganisationModel.findByIdAndUpdate(
         newUser.id,
         { otp, otpExpires: new Date(Date.now() + 10 * 60 * 1000) },
         { new: true }
@@ -90,7 +90,7 @@ class CustomerAuthController {
       return res.status(400).json({ message: "Email and OTP are required" });
     }
     try {
-      const user = await UserModel.findOne({ email });
+      const user = await OrganisationModel.findOne({ email });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -102,7 +102,7 @@ class CustomerAuthController {
       // Verify the user and update the verified field to true
       // Generate a JSON Web Token
       const token = jwt.sign(
-        { id: user.id, email: user.email, role: "Customer" },
+        { id: user.id, email: user.email, role: "Organisation" },
         process.env.JWT_SECRET
         // { expiresIn: "24h" }
       );
@@ -119,7 +119,7 @@ class CustomerAuthController {
       return res.status(400).json({ message: "Email is required" });
     }
     try {
-      const user = await UserModel.findOne({ email });
+      const user = await OrganisationModel.findOne({ email });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -127,7 +127,7 @@ class CustomerAuthController {
       // Generate a random 6 digit OTP
       const otp = Math.floor(Math.random() * 900000) + 100000;
       // Save OTP to the user document and set an expiration time
-      await UserModel.findByIdAndUpdate(
+      await OrganisationModel.findByIdAndUpdate(
         user.id,
         { otp, otpExpires: new Date(Date.now() + 10 * 60 * 1000) },
         { new: true }
@@ -153,7 +153,7 @@ class CustomerAuthController {
         return res.status(400).json({ message: "User ID is required." });
       }
 
-      const user = await UserModel.findById(id).select("documents"); // Select only the documents field
+      const user = await OrganisationModel.findById(id).select("documents"); // Select only the documents field
 
       if (!user) {
         return res.status(404).json({ message: "User not found." });
@@ -169,7 +169,7 @@ class CustomerAuthController {
       }
 
       res.status(200).json({
-        message: "Customer registration documents retrieved successfully",
+        message: "Organisation registration documents retrieved successfully",
         documents: user.documents,
       });
     } catch (error) {
@@ -190,7 +190,7 @@ class CustomerAuthController {
         });
       }
 
-      const existingUser = await UserModel.findOne({ _id: id, email });
+      const existingUser = await OrganisationModel.findOne({ _id: id, email });
 
       if (!existingUser) {
         deleteUploadedFiles(req.files);
@@ -231,7 +231,7 @@ class CustomerAuthController {
       res
         .status(200) // Changed status from 201 to 200 as this is an update operation, not a creation.
         .json({
-          message: "Customer documents registered successfully",
+          message: "Organisation documents registered successfully",
           user: existingUser, // The existingUser object now reflects the saved changes.
         });
     } catch (error) {
@@ -244,7 +244,7 @@ class CustomerAuthController {
   };
 
   updateProfileDetails = async (req, res) => {
-    // Assuming 'UserModel' is imported and 'deleteSingleFile' utility function is available in scope.
+    // Assuming 'OrganisationModel' is imported and 'deleteSingleFile' utility function is available in scope.
     // 'deleteSingleFile' should handle deleting a single file path, similar to how 'deleteUploadedFiles'
     // handles multiple files in the 'registration' method.
     try {
@@ -258,7 +258,7 @@ class CustomerAuthController {
           .json({ message: "Unauthorized: User ID not found." });
       }
 
-      const existingUser = await UserModel.findById(userId);
+      const existingUser = await OrganisationModel.findById(userId);
 
       if (!existingUser) {
         // If a file was uploaded but user not found, delete the file
@@ -342,7 +342,7 @@ class CustomerAuthController {
     try {
       const userId = req.user.id; // Get user ID from the authenticated request
 
-      const user = await UserModel.findById(userId).select(
+      const user = await OrganisationModel.findById(userId).select(
         "name email phoneNo documents.profilePictureFilePath wallet createdAt"
       );
 
@@ -418,7 +418,7 @@ class CustomerAuthController {
   //     }
 
   //     // Find the user and update their subscription arrays
-  //     const user = await UserModel.findById(userId);
+  //     const user = await OrganisationModel.findById(userId);
   //     if (!user) {
   //       return res.status(404).json({ message: "User not found." });
   //     }
@@ -536,7 +536,7 @@ class CustomerAuthController {
       }
 
       // Find the user and update their subscription arrays
-      const user = await UserModel.findById(userId);
+      const user = await OrganisationModel.findById(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found." });
       }
@@ -694,7 +694,7 @@ class CustomerAuthController {
         const paymentFrom = subscription.paymentFrom;
         const order_status = payment_status; // Used in console.log later
 
-        const user = await UserModel.findById(customer_id);
+        const user = await OrganisationModel.findById(customer_id);
 
         if (!user) {
           console.error(
@@ -760,7 +760,7 @@ class CustomerAuthController {
       const totalCost = parseFloat(amount) * parseFloat(vehicleCount);
 
       // Find the user and update their subscription arrays
-      const user = await UserModel.findById(userId);
+      const user = await OrganisationModel.findById(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found." });
       }
@@ -920,7 +920,7 @@ class CustomerAuthController {
         const paymentFrom = subscription.paymentFrom;
         const order_status = payment_status; // Used in console.log later
 
-        const user = await UserModel.findById(customer_id);
+        const user = await OrganisationModel.findById(customer_id);
 
         if (!user) {
           console.error(
@@ -963,7 +963,7 @@ class CustomerAuthController {
       }
 
       // Find the user to ensure the subscription belongs to them
-      const user = await UserModel.findById(userId)
+      const user = await OrganisationModel.findById(userId)
         .populate("currentSubscriptions")
         .populate("subscriptionHistory");
 
@@ -1008,7 +1008,7 @@ class CustomerAuthController {
       const userId = req.user.id; // Assuming userId is available from JWT middleware
 
       // Find the user and populate their current subscriptions
-      const user = await UserModel.findById(userId).populate(
+      const user = await OrganisationModel.findById(userId).populate(
         "currentSubscriptions"
       );
 
@@ -1030,7 +1030,7 @@ class CustomerAuthController {
       const userId = req.user.id; // Assuming userId is available from JWT middleware
 
       // Find the user and populate their subscription history
-      const user = await UserModel.findById(userId).populate(
+      const user = await OrganisationModel.findById(userId).populate(
         "subscriptionHistory"
       );
 
@@ -1051,13 +1051,13 @@ class CustomerAuthController {
     try {
       const userId = req.user.id; // Assuming userId is available from JWT middleware
 
-      const user = await UserModel.findById(userId);
+      const user = await OrganisationModel.findById(userId);
 
       if (!user) {
         return res.status(404).json({ message: "User not found." });
       }
 
-      res.status(200).json({ walletBalance: user.walletBalance || 0 }); // Assuming 'wallet' field exists in UserModel
+      res.status(200).json({ walletBalance: user.walletBalance || 0 }); // Assuming 'wallet' field exists in OrganisationModel
     } catch (error) {
       console.error("Get wallet details error:", error);
       res.status(500).json({ message: "Internal Server Error" });
@@ -1075,7 +1075,7 @@ class CustomerAuthController {
           .json({ message: "Valid positive amount is required." });
       }
 
-      const user = await UserModel.findById(userId);
+      const user = await OrganisationModel.findById(userId);
 
       if (!user) {
         return res.status(404).json({ message: "User not found." });
@@ -1130,7 +1130,7 @@ class CustomerAuthController {
       // console.log("Customer ID:", customer_id);
 
       if (payment_status === "SUCCESS") {
-        const user = await UserModel.findById(customer_id);
+        const user = await OrganisationModel.findById(customer_id);
 
         if (!user) {
           console.error(
@@ -1214,7 +1214,9 @@ class CustomerAuthController {
     try {
       const userId = req.user.id; // Get user ID from the authenticated request
 
-      const user = await UserModel.findById(userId).select("walletHistory");
+      const user = await OrganisationModel.findById(userId).select(
+        "walletHistory"
+      );
 
       if (!user) {
         return res.status(404).json({ message: "User not found." });
@@ -1234,7 +1236,7 @@ class CustomerAuthController {
     try {
       const userId = req.user.id; // Get user ID from the authenticated request
 
-      const user = await UserModel.findById(userId).select(
+      const user = await OrganisationModel.findById(userId).select(
         "transactionHistory"
       );
 
@@ -1284,4 +1286,4 @@ class CustomerAuthController {
   pushNotification = async (req, res) => {};
 }
 
-export default CustomerAuthController;
+export default OrganisationController;

@@ -69,6 +69,14 @@ customerRouter.post("/webhook/package-purchase", (req, res) => {
   customerAuthController.handlePackagePurchaseWebhook(req, res);
 });
 
+customerRouter.post("/renew-package", jwtAuth, (req, res) => {
+  customerAuthController.renewPackage(req, res);
+});
+
+customerRouter.post("/webhook/renew-package", (req, res) => {
+  customerAuthController.handlePackageRenewWebhook(req, res);
+});
+
 customerRouter.post("/webhook/wallet-topup", (req, res) => {
   customerAuthController.handleWalletWebhook(req, res);
 });

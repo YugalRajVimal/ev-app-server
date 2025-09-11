@@ -9,10 +9,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "Customer",
     },
-    // password: { type: String, required: true },
-    // verified: {
-    //   type: Boolean,
-    // },
     otp: {
       type: String,
     },
@@ -37,7 +33,6 @@ const userSchema = new mongoose.Schema(
     subscriptionHistory: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Subscriptions" },
     ],
-
     walletBalance: {
       type: Number,
       default: 0,
