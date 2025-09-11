@@ -2,21 +2,22 @@ import mongoose from "mongoose";
 
 const subscriptionSchema = new mongoose.Schema(
   {
-    planName: {
-      type: String,
+    packageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Package",
       required: true,
     },
-    period: {
-      type: String,
-      required: true,
-      enum: ["weekly", "monthly", "payAsYouGo"],
-    }, // e.g., "monthly", "yearly"
-    daysCount: { type: Number },
-    trialEndsOn: { type: Date, required: true },
     subscriptionStartsOn: { type: Date, required: true },
-    amount: { type: Number, required: true },
-    active: { type: Boolean, default: true },
-    paymentFrom: { type: String, enum: ["Wallet", "PaymentGateway"] },
+    amount: { type: Number, required: true, min: 0 },
+    paymentFrom: {
+      type: String,
+      enum: ["Wallet", "PaymentGateway"],
+      required: true,
+    },
+    vehicleCount: { type: Number, required: true, min: 1 },
+    daysCount: { type: Number, required: true, min: 1 }, // Duration of the subscription in days
+    active: { type: Boolean, default: false },
+    isPaid: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

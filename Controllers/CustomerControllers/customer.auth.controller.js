@@ -1,11 +1,17 @@
 import UserModel from "../../Schema/user.schema.js";
 import sendMail from "../../config/nodeMailer.config.js";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { deleteUploadedFiles } from "../../middlewares/fileDelete.middleware.js";
 import SubscriptionModel from "../../Schema/subscriptions.schema.js";
 import ExpiredTokenModel from "../../Schema/expired-token.schema.js";
 import PackageModel from "../../Schema/packages.schema.js";
+import { Cashfree as CashfreePG } from "cashfree-pg";
+
+CashfreePG.XClientId = process.env.CASHFREE_CLIENT_ID;
+CashfreePG.XClientSecret = process.env.CASHFREE_CLIENT_SECRET;
+CashfreePG.XEnvironment = CashfreePG.Environment.SANDBOX;
 
 class CustomerAuthController {
   checkAuth = async (req, res) => {
@@ -383,32 +389,150 @@ class CustomerAuthController {
     }
   };
 
+  // purchasePackage = async (req, res) => {
+  //   try {
+  //     const userId = req.user.id; // Get user ID from the authenticated request
+
+  //     // Extract subscription details from the request body
+  //     const { planName, period, amount, daysCount, paymentFrom } = req.body;
+
+  //     // Basic validation for required fields
+  //     if (!planName || !period || !amount || !paymentFrom) {
+  //       return res.status(400).json({
+  //         message:
+  //           "Missing required subscription details (planName, period, amount).",
+  //       });
+  //     }
+
+  //     if (period == "payAsYouGo" && !daysCount) {
+  //       return res.status(400).json({
+  //         message: "For 'payAsYouGo' plans, 'daysCount' is required.",
+  //       });
+  //     }
+
+  //     // Validate amount type and value
+  //     if (typeof amount !== "number" || amount <= 0) {
+  //       return res
+  //         .status(400)
+  //         .json({ message: "Amount must be a positive number." });
+  //     }
+
+  //     // Find the user and update their subscription arrays
+  //     const user = await UserModel.findById(userId);
+  //     if (!user) {
+  //       return res.status(404).json({ message: "User not found." });
+  //     }
+
+  //     // Set subscription start date to now
+  //     const subscriptionStartsOn = new Date();
+  //     let trialEndsOn = new Date(subscriptionStartsOn); // Initialize with start date
+
+  //     if (period === "monthly") {
+  //       trialEndsOn.setDate(subscriptionStartsOn.getDate() + 30);
+  //     } else if (period === "weekly") {
+  //       trialEndsOn.setDate(subscriptionStartsOn.getDate() + 7);
+  //     } else if (period === "payAsYouGo") {
+  //       trialEndsOn.setDate(subscriptionStartsOn.getDate() + daysCount);
+  //     }
+
+  //     if (paymentFrom != "Wallet" || paymentFrom != "PaymentGateway") {
+  //       return res.status(400).json({
+  //         message:
+  //           "Invalid paymentFrom method. Must be 'Wallet' or 'PaymentGateway'",
+  //       });
+  //     }
+
+  //     if (paymentFrom == "Wallet") {
+  //       if (user.walletBalance < amount) {
+  //         return res
+  //           .status(402)
+  //           .json({ message: "Insufficient wallet balance." });
+  //       }
+
+  //       user.walletBalance =
+  //         parseFloat(user.walletBalance) - parseFloat(amount);
+
+  //       user.walletHistory.push({
+  //         amount: amount,
+  //         type: "Debit",
+  //       });
+  //     }
+
+  //     // Create a new subscription document
+  //     const newSubscription = new SubscriptionModel({
+  //       planName,
+  //       period,
+  //       trialEndsOn,
+  //       subscriptionStartsOn,
+  //       amount,
+  //       paymentFrom,
+  //       daysCount: daysCount ? daysCount : null,
+  //     });
+
+  //     // Save the new subscription to the database
+  //     await newSubscription.save();
+
+  //     user.currentSubscriptions.push(newSubscription._id);
+  //     user.subscriptionHistory.push(newSubscription._id); // Also add to history
+
+  //     // Add transaction history for the purchase
+  //     user.transactionHistory.push({
+  //       amount: amount,
+  //       type: "Debit",
+  //       debittedFrom: paymentFrom, // Assuming payment is made via an external gateway for the subscription
+  //       transactionDate: new Date(),
+  //     });
+
+  //     await user.save();
+
+  //     // Respond with success
+  //     res.status(201).json({
+  //       message: "Subscription package purchased successfully.",
+  //       subscription: newSubscription,
+  //     });
+  //   } catch (error) {
+  //     console.error("Purchase package error:", error);
+  //     res.status(500).json({ message: "Internal Server Error" });
+  //   }
+  // };
+
+  generateOrderId = async () => {
+    const uniqueId = crypto.randomBytes(16).toString("hex");
+    const hash = crypto.createHash("sha256");
+    hash.update(uniqueId);
+    return hash.digest("hex").slice(0, 12);
+  };
+
   purchasePackage = async (req, res) => {
     try {
       const userId = req.user.id; // Get user ID from the authenticated request
 
       // Extract subscription details from the request body
-      const { planName, period, amount, daysCount, paymentFrom } = req.body;
+      const { packageId, startDate, vehicleCount, paymentFrom } = req.body;
 
       // Basic validation for required fields
-      if (!planName || !period || !amount || !paymentFrom) {
+      if (!vehicleCount || !packageId || !startDate || !paymentFrom) {
         return res.status(400).json({
           message:
             "Missing required subscription details (planName, period, amount).",
         });
       }
 
-      if (period == "payAsYouGo" && !daysCount) {
-        return res.status(400).json({
-          message: "For 'payAsYouGo' plans, 'daysCount' is required.",
-        });
+      // Fetch package details from the database
+      const packageDetails = await PackageModel.findById(packageId);
+      if (!packageDetails) {
+        return res.status(404).json({ message: "Package not found." });
       }
 
-      // Validate amount type and value
-      if (typeof amount !== "number" || amount <= 0) {
-        return res
-          .status(400)
-          .json({ message: "Amount must be a positive number." });
+      // Extract details from the package
+      const { amount, daysCount } = packageDetails;
+
+      // Basic validation for extracted package details
+      if (amount === undefined || amount === null) {
+        return res.status(400).json({
+          message:
+            "Invalid package details: missing planName, period, or amount.",
+        });
       }
 
       // Find the user and update their subscription arrays
@@ -418,23 +542,17 @@ class CustomerAuthController {
       }
 
       // Set subscription start date to now
-      const subscriptionStartsOn = new Date();
-      let trialEndsOn = new Date(subscriptionStartsOn); // Initialize with start date
+      // let trialEndsOn = new Date(subscriptionStartsOn); // Initialize with start date
+      // trialEndsOn.setDate(subscriptionStartsOn.getDate() + daysCount);
 
-      if (period === "monthly") {
-        trialEndsOn.setDate(subscriptionStartsOn.getDate() + 30);
-      } else if (period === "weekly") {
-        trialEndsOn.setDate(subscriptionStartsOn.getDate() + 7);
-      } else if (period === "payAsYouGo") {
-        trialEndsOn.setDate(subscriptionStartsOn.getDate() + daysCount);
-      }
-
-      if (paymentFrom != "Wallet" || paymentFrom != "PaymentGateway") {
+      if (paymentFrom != "Wallet" && paymentFrom != "PaymentGateway") {
         return res.status(400).json({
           message:
             "Invalid paymentFrom method. Must be 'Wallet' or 'PaymentGateway'",
         });
       }
+
+      let isPaid = false;
 
       if (paymentFrom == "Wallet") {
         if (user.walletBalance < amount) {
@@ -450,17 +568,50 @@ class CustomerAuthController {
           amount: amount,
           type: "Debit",
         });
+
+        isPaid = true;
+
+        // Add transaction history for the purchase
+        user.transactionHistory.push({
+          amount: amount,
+          type: "Debit",
+          debittedFrom: paymentFrom, // Assuming payment is made via an external gateway for the subscription
+          transactionDate: new Date(),
+        });
+      }
+
+      let cashfreeRes;
+
+      if (paymentFrom == "PaymentGateway") {
+        const orderId = await this.generateOrderId();
+
+        const totalCost = parseFloat(amount) * parseFloat(vehicleCount);
+
+        let request = {
+          order_id: orderId,
+          order_amount: totalCost,
+          order_currency: "INR",
+          customer_details: {
+            customer_id: `${user.name.replace(/\s/g, "")}${orderId}`,
+            customer_name: user.name,
+            customer_phone: user.phoneNo,
+            customer_email: user.email,
+          },
+        };
+
+        cashfreeRes = await CashfreePG.PGCreateOrder("2023-08-01", request);
       }
 
       // Create a new subscription document
       const newSubscription = new SubscriptionModel({
-        planName,
-        period,
-        trialEndsOn,
-        subscriptionStartsOn,
+        packageId,
+        subscriptionStartsOn: startDate,
         amount,
         paymentFrom,
-        daysCount: daysCount ? daysCount : null,
+        vehicleCount,
+        daysCount,
+        active: false,
+        isPaid,
       });
 
       // Save the new subscription to the database
@@ -469,20 +620,12 @@ class CustomerAuthController {
       user.currentSubscriptions.push(newSubscription._id);
       user.subscriptionHistory.push(newSubscription._id); // Also add to history
 
-      // Add transaction history for the purchase
-      user.transactionHistory.push({
-        amount: amount,
-        type: "Debit",
-        debittedFrom: paymentFrom, // Assuming payment is made via an external gateway for the subscription
-        transactionDate: new Date(),
-      });
-
       await user.save();
 
-      // Respond with success
       res.status(201).json({
         message: "Subscription package purchased successfully.",
         subscription: newSubscription,
+        cashfreeResponse: cashfreeRes?.data || {}, // ✅ only send safe JSON
       });
     } catch (error) {
       console.error("Purchase package error:", error);
