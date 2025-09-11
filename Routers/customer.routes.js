@@ -65,6 +65,14 @@ customerRouter.post("/purchase-package", jwtAuth, (req, res) => {
   customerAuthController.purchasePackage(req, res);
 });
 
+customerRouter.post("/webhook/package-purchase", (req, res) => {
+  customerAuthController.handlePackagePurchaseWebhook(req, res);
+});
+
+customerRouter.post("/webhook/wallet-topup", (req, res) => {
+  customerAuthController.handleWalletWebhook(req, res);
+});
+
 customerRouter.get(
   "/get-subscription-detail/:subscriptionId",
   jwtAuth,

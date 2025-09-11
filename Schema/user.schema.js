@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
@@ -56,6 +55,11 @@ const userSchema = new mongoose.Schema(
           required: true,
         },
         transactionDate: { type: Date, default: Date.now }, // Added for better tracking of individual transactions
+        isPaid: { type: Boolean, default: false },
+        orderId: {
+          type: String,
+          unique: true,
+        },
       },
     ],
     transactionHistory: [

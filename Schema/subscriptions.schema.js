@@ -14,6 +14,11 @@ const subscriptionSchema = new mongoose.Schema(
       enum: ["Wallet", "PaymentGateway"],
       required: true,
     },
+    orderId: {
+      type: String,
+      required: true,
+      unique: true,
+    },
     vehicleCount: { type: Number, required: true, min: 1 },
     daysCount: { type: Number, required: true, min: 1 }, // Duration of the subscription in days
     active: { type: Boolean, default: false },

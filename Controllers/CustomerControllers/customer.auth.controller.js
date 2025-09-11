@@ -582,9 +582,9 @@ class CustomerAuthController {
 
       let cashfreeRes;
 
-      if (paymentFrom == "PaymentGateway") {
-        const orderId = await this.generateOrderId();
+      const orderId = await this.generateOrderId();
 
+      if (paymentFrom == "PaymentGateway") {
         const totalCost = parseFloat(amount) * parseFloat(vehicleCount);
 
         let request = {
@@ -592,7 +592,7 @@ class CustomerAuthController {
           order_amount: totalCost,
           order_currency: "INR",
           customer_details: {
-            customer_id: `${user.name.replace(/\s/g, "")}${orderId}`,
+            customer_id: user._id,
             customer_name: user.name,
             customer_phone: user.phoneNo,
             customer_email: user.email,
@@ -609,6 +609,7 @@ class CustomerAuthController {
         amount,
         paymentFrom,
         vehicleCount,
+        orderId,
         daysCount,
         active: false,
         isPaid,
@@ -630,6 +631,97 @@ class CustomerAuthController {
     } catch (error) {
       console.error("Purchase package error:", error);
       res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  handlePackagePurchaseWebhook = async (req, res) => {
+    try {
+      const order_id = req.body.data.order.order_id;
+      const payment_status = req.body.data.payment.payment_status;
+      const customer_id = req.body.data.customer_details.customer_id;
+
+      // console.log("Order ID:", order_id);
+      // console.log("Payment Status:", payment_status);
+      // console.log("Customer ID:", customer_id);
+
+      if (payment_status === "SUCCESS") {
+        // const subscription = await SubscriptionModel.findOneAndUpdate(
+        //   { orderId: order_id },
+        //   { status: "PAID" },
+        //   { new: true }
+        // );
+
+        let subscription = await SubscriptionModel.findOne({
+          orderId: order_id,
+        });
+
+        if (!subscription) {
+          console.error(`Subscription with order ID ${order_id} not found.`);
+          // For webhooks, it's generally best to return a 200 OK even if the item isn't found
+          // to prevent the payment gateway from retrying the webhook unnecessarily.
+          return res
+            .status(200)
+            .send("Subscription not found, but webhook processed.");
+        }
+
+        if (subscription.isPaid) {
+          console.log(
+            `Subscription with order ID ${order_id} is already paid. No further action needed.`
+          );
+          // If the subscription is already marked as paid, we consider this webhook
+          // successfully processed and prevent redundant updates or actions.
+          return res
+            .status(200)
+            .send("Webhook received successfully (already paid).");
+        }
+
+        // If not already paid, proceed to mark as paid
+        subscription.isPaid = true;
+        await subscription.save();
+
+        if (!subscription) {
+          console.error(`Subscription with order ID ${order_id} not found.`);
+          // For webhooks, it's generally best to return a 200 OK even if the item isn't found
+          // to prevent the payment gateway from retrying the webhook unnecessarily.
+          return res
+            .status(200)
+            .send("Subscription not found, but webhook processed.");
+        }
+
+        // Define variables needed by the subsequent code block
+        // `isPaid` will be true as per the update above
+        const amount = subscription.amount;
+        const paymentFrom = subscription.paymentFrom;
+        const order_status = payment_status; // Used in console.log later
+
+        const user = await UserModel.findById(customer_id);
+
+        if (!user) {
+          console.error(
+            `User with ID ${customer_id} not found for package purchase webhook (Order ID: ${order_id}).`
+          );
+          // For webhooks, it's generally best to return a 200 OK even if the item isn't found
+          // to prevent the payment gateway from retrying the webhook unnecessarily.
+          return res.status(200).send("User not found, but webhook processed.");
+        }
+
+        // Add transaction history for the purchase
+        user.transactionHistory.push({
+          amount: amount,
+          type: "Debit",
+          debittedFrom: paymentFrom, // Assuming payment is made via an external gateway for the subscription
+          transactionDate: new Date(),
+        });
+
+        console.log(`Order ${order_id} payment status: ${order_status}`);
+      } else {
+        console.log(`Order ${order_id} payment status: ${order_status}`);
+      }
+
+      res.status(200).send("Webhook received successfully");
+    } catch (error) {
+      console.error("Error handling Cashfree webhook", error);
+      res.status(500).json({ error: "Internal Server Error" });
     }
   };
 
@@ -763,22 +855,132 @@ class CustomerAuthController {
         return res.status(404).json({ message: "User not found." });
       }
 
-      user.walletBalance += amount;
-      user.totalAddedBalanceInWallet += amount;
+      const orderId = await this.generateOrderId();
+
+      let request = {
+        order_id: orderId,
+        order_amount: parseFloat(amount),
+        order_currency: "INR",
+        customer_details: {
+          customer_id: user._id,
+          customer_name: user.name,
+          customer_phone: user.phoneNo,
+          customer_email: user.email,
+        },
+      };
+
+      const cashfreeRes = await CashfreePG.PGCreateOrder("2023-08-01", request);
+
+      // user.walletBalance += amount;
+      // user.totalAddedBalanceInWallet += amount;
       user.walletHistory.push({
         amount: amount,
         type: "Credit",
+        isPaid: false,
+        orderId: orderId,
       });
 
       await user.save();
 
       res.status(200).json({
         message: "Amount added to wallet successfully.",
-        newWalletBalance: user.walletBalance,
+        // newWalletBalance: user.walletBalance,
+        cashfreeResponse: cashfreeRes?.data || {},
       });
     } catch (error) {
       console.error("Add amount to wallet error:", error);
       res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  handleWalletWebhook = async (req, res) => {
+    try {
+      const order_id = req.body.data.order.order_id;
+      const payment_status = req.body.data.payment.payment_status;
+      const customer_id = req.body.data.customer_details.customer_id;
+
+      // console.log("Order ID:", order_id);
+      // console.log("Payment Status:", payment_status);
+      // console.log("Customer ID:", customer_id);
+
+      if (payment_status === "SUCCESS") {
+        const user = await UserModel.findById(customer_id);
+
+        if (!user) {
+          console.error(
+            `User with ID ${customer_id} not found for wallet webhook (Order ID: ${order_id}).`
+          );
+          // For webhooks, it's generally best to return a 200 OK even if the item isn't found
+          // to prevent the payment gateway from retrying the webhook unnecessarily.
+          return res.status(200).send("User not found, but webhook processed.");
+        }
+
+        // Find the wallet history entry with the matching orderId
+        const walletEntryIndex = user.walletHistory.findIndex(
+          (entry) => entry.orderId === order_id
+        );
+
+        if (walletEntryIndex === -1) {
+          console.error(
+            `Wallet history entry with order ID ${order_id} not found for user ${customer_id}.`
+          );
+          // For webhooks, it's generally best to return a 200 OK even if the item isn't found
+          // to prevent the payment gateway from retrying the webhook unnecessarily.
+          return res
+            .status(200)
+            .send("Wallet history entry not found, but webhook processed.");
+        }
+
+        let walletEntry = user.walletHistory[walletEntryIndex];
+
+        if (walletEntry.isPaid) {
+          console.log(
+            `Wallet entry with order ID ${order_id} for user ${customer_id} is already paid. No further action needed.`
+          );
+          // If the wallet entry is already marked as paid, we consider this webhook
+          // successfully processed and prevent redundant updates or actions.
+          return res
+            .status(200)
+            .send("Webhook received successfully (already paid).");
+        }
+
+        // If not already paid, proceed to mark as paid
+        walletEntry.isPaid = true;
+        // Update the entry in the array (important for Mongoose to detect changes in subdocuments)
+        user.walletHistory.set(walletEntryIndex, walletEntry);
+
+        // Define variables needed by the subsequent code block and for transaction history
+        const amount = parseFloat(walletEntry.amount);
+        const paymentFrom = "PaymentGateway"; // For wallet top-up, payment always comes from a gateway
+
+        // Update total added balance in wallet
+        user.totalAddedBalanceInWallet += amount;
+        user.walletBalance += amount; // 'amount' is already a float
+
+        // Add transaction history for the wallet top-up (Credit)
+        user.transactionHistory.push({
+          amount: amount,
+          type: "Credit",
+          creditedIn: "Wallet",
+          debittedFrom: paymentFrom,
+          transactionDate: new Date(),
+        });
+
+        await user.save();
+
+        console.log(
+          `Order ${order_id} payment status: ${payment_status} for user ${customer_id}. Wallet updated.`
+        );
+      } else {
+        console.log(
+          `Order ${order_id} payment status: ${payment_status} for user ${customer_id}. No wallet update performed.`
+        );
+      }
+
+      res.status(200).send("Webhook received successfully");
+    } catch (error) {
+      console.error("Error handling Cashfree wallet webhook:", error); // More specific error message
+      res.status(500).json({ error: "Internal Server Error" });
     }
   };
 
