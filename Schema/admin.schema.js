@@ -14,18 +14,13 @@ const adminSchema = new mongoose.Schema({
     type: String,
     unique: true,
   },
-  password: {
-    type: String,
-  },
   otp: {
     type: String,
   },
   otpExpires: {
     type: Date,
   },
-  verified: {
-    type: Boolean,
-  },
+
 });
 
 const AdminModel = mongoose.model("Admin", adminSchema);

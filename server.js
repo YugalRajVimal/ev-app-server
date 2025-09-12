@@ -13,6 +13,7 @@ app.use(
     // credentials: true,
   })
 );
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -21,6 +22,10 @@ const port = process.env.PORT || 8080;
 app.get("/", (req, res) => {
   res.send("Welcome to EV App Server");
 });
+
+app.use("/Uploads/Aadhar", express.static("Uploads/Aadhar"));
+app.use("/Uploads/DrivingLicense", express.static("Uploads/DrivingLicense"));
+app.use("/Uploads/AddressProof", express.static("Uploads/AddressProof"));
 
 app.use("/api", router);
 

@@ -15,7 +15,6 @@ const packageSchema = new mongoose.Schema(
     periodType: {
       type: String,
       required: true,
-      enum: ["monthly", "weekly", "payAsYouGo"],
     },
     daysCount: {
       type: Number,
