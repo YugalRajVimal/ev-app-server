@@ -514,7 +514,7 @@ class OrganisationController {
       if (!vehicleCount || !packageId || !startDate || !paymentFrom) {
         return res.status(400).json({
           message:
-            "Missing required subscription details (planName, period, amount).",
+            "Missing required subscription details packageId, startDate, vehicleCount, paymentFrom.",
         });
       }
 
