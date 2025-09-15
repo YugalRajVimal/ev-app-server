@@ -29,13 +29,14 @@ class CustomerAuthController {
   };
 
   signup = async (req, res) => {
-    const { email, name, phoneNo } = req.body;
+    let { email, name, phoneNo } = req.body;
     console.log(`[Signup] Attempting signup for email: ${email}`);
 
     if (!email || !name || !phoneNo) {
       console.log("[Signup] Missing required fields.");
       return res.status(400).json({ message: "All fields are required" });
     }
+    email = email.toLowerCase();
 
     try {
       const existingUser = await UserModel.findOne({ email });
@@ -85,10 +86,12 @@ class CustomerAuthController {
   };
 
   verifyAccount = async (req, res) => {
-    const { email, otp } = req.body;
+    let { email, otp } = req.body;
     if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
     }
+    email = email.toLowerCase();
+
     try {
       const user = await UserModel.findOne({ email });
       if (!user) {
@@ -114,10 +117,12 @@ class CustomerAuthController {
   };
 
   signin = async (req, res) => {
-    const { email } = req.body;
+    let { email } = req.body;
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
+    email = email.toLowerCase();
+
     try {
       const user = await UserModel.findOne({ email });
       if (!user) {
