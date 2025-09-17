@@ -7,20 +7,17 @@ import { connectUsingMongoose } from "./config/mongoose.config.js";
 
 const app = express();
 
-const allowedOrigins = "*";
-
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
+    origin: "*", // allow all origins
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"], // allow headers
   })
 );
+
+// Handle preflight requests explicitly
+// app.options("/*", cors());
+app.use(cors());
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
